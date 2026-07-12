@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/Code/demo-app/backend-service/src/main/java/com/example/portfolio/dto/**)",
+      "Read(//d/Code/demo-app/backend-service/src/main/java/com/example/portfolio/controller/**)",
+      "Read(//d/Code/demo-app/backend-service/src/main/java/com/example/portfolio/entity/**)",
+      "Read(//d/Code/demo-app/backend-service/src/main/java/com/example/portfolio/service/**)",
+      "Read(//d/Code/demo-app/backend-service/src/main/java/com/example/portfolio/client/**)",
+      "Read(//d/Code/demo-app/risk-service/**)",
+      "Read(//d/Code/**)",
+      "Read(//d/Code/demo-app/risk-service/risk-service/src/main/java/com/example/fxcompliance/entity/**)",
+      "Bash(grep -rn \"marketTrend\\\\|Trend\" \"d:/Code/demo-app/valuation-service/valuation-service/src\" 2>/dev/null)",
+      "Read(//d/Code/demo-app/valuation-service/valuation-service/src/**)",
+      "Bash(grep -n \"estimatedMarketValue\\\\|pricePerSqm\\\\|BigDecimal\" \"d:/Code/demo-app/valuation-service/valuation-service/src/main/java/com/example/valuationservice/service/ValuationService.java\" | head -40)",
+      "Read(//d/Code/demo-app/valuation-service/valuation-service/src/main/java/com/example/valuationservice/service/**)"
+    ]
+  }
+}

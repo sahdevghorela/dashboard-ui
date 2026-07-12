@@ -1,8 +1,8 @@
 /**
- * Mirrors portfolio-service's bean-validated request/response DTOs.
- * Field names (countryCode, sizeSqm, acquisitionCurrency, ...) match
- * valuation-service's benchmark DTOs so a PropertyDto can be forwarded
- * to /valuations/estimate without remapping.
+ * Mirrors portfolio-service's actual DTOs 1:1 (see
+ * backend-service/src/main/java/com/example/portfolio/dto/*.java):
+ *   - RealEstateProjectResponse / RealEstateProjectRequest
+ *   - EnrichedRealEstateProjectResponse (wraps the base response, does not flatten it)
  */
 
 export const PROPERTY_TYPES = [
@@ -10,55 +10,69 @@ export const PROPERTY_TYPES = [
   "RETAIL",
   "RESIDENTIAL",
   "INDUSTRIAL",
-  "HOTEL",
-  "MIXED_USE",
+  "LAND",
 ] as const;
 export type PropertyType = (typeof PROPERTY_TYPES)[number];
 
-export const PROPERTY_STATUSES = [
+export const PROJECT_STATUSES = [
   "ACTIVE",
-  "UNDER_CONTRACT",
-  "SOLD",
-  "ARCHIVED",
+  "UNDER_CONSTRUCTION",
+  "HELD_FOR_SALE",
+  "DISPOSED",
 ] as const;
-export type PropertyStatus = (typeof PROPERTY_STATUSES)[number];
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
-export const RISK_RATINGS = ["GREEN", "AMBER", "RED"] as const;
-export type RiskRating = (typeof RISK_RATINGS)[number];
+/** Real values from fx-compliance-service's AmlRiskRating enum. */
+export const AML_RISK_RATINGS = ["LOW", "MEDIUM", "HIGH"] as const;
+export type AmlRiskRating = (typeof AML_RISK_RATINGS)[number];
 
-export const VALUATION_TRENDS = ["UP", "DOWN", "STABLE"] as const;
-export type ValuationTrend = (typeof VALUATION_TRENDS)[number];
+/** Real values from valuation-service's MarketTrend enum. */
+export const MARKET_TRENDS = ["RISING", "STABLE", "DECLINING"] as const;
+export type MarketTrend = (typeof MARKET_TRENDS)[number];
 
-/** Maps 1:1 to backend PropertyDto (request + response body). */
-export interface PropertyDto {
+/** Maps 1:1 to backend RealEstateProjectResponse. */
+export interface RealEstateProjectResponse {
   id: number;
-  name: string;
+  projectName: string;
   countryCode: string;
   city: string;
+  address: string;
   propertyType: PropertyType;
-  status: PropertyStatus;
   sizeSqm: number;
+  acquisitionDate: string; // ISO date, e.g. 2024-03-15
   acquisitionCost: number;
   acquisitionCurrency: string;
-  acquisitionDate: string; // ISO date, e.g. 2024-03-15
-  createdAt?: string;
-  updatedAt?: string;
+  ownerEntity: string;
+  status: ProjectStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 
-/** Payload accepted by POST/PUT — server assigns id/createdAt/updatedAt. */
-export type PropertyUpsertDto = Omit<
-  PropertyDto,
+/** Maps 1:1 to backend RealEstateProjectRequest — the create/update body. */
+export type RealEstateProjectRequest = Omit<
+  RealEstateProjectResponse,
   "id" | "createdAt" | "updatedAt"
 >;
 
-/** Returned by GET /properties/enriched and /properties/{id}/enriched. */
-export interface EnrichedPropertyDto extends PropertyDto {
-  estimatedMarketValue: number;
-  marketValueCurrency: string;
-  valuationConfidence: "HIGH" | "MEDIUM" | "LOW";
-  trend: ValuationTrend;
-  amlRiskRating: RiskRating;
-  amlRiskScore?: number;
+/**
+ * Maps 1:1 to backend EnrichedRealEstateProjectResponse. Note this WRAPS the
+ * base project under `property` rather than flattening it — portfolio-service
+ * composes it from three downstream calls (valuation-service, fx-compliance's
+ * FX + AML endpoints) via Mono.zip, so each enrichment field can independently
+ * fall back to a sentinel value ("valuation unavailable" / "compliance
+ * unavailable") with its own `*Unavailable` flag when that specific downstream
+ * call fails or times out (see RealEstateProjectService.enrich). UI code
+ * should branch on the boolean flags, not string-match the sentinel text.
+ */
+export interface EnrichedRealEstateProjectResponse {
+  property: RealEstateProjectResponse;
+  estimatedMarketValue: number | null;
+  marketTrend: MarketTrend | string; // string covers the "valuation unavailable" sentinel
+  valueUSD: number | null;
+  amlRiskRating: AmlRiskRating | string; // string covers the "compliance unavailable" sentinel
+  valuationUnavailable: boolean;
+  fxUnavailable: boolean;
+  complianceUnavailable: boolean;
 }
 
 /** Spring's default Page<T> JSON shape. */
@@ -75,7 +89,7 @@ export interface PropertyQueryArgs {
   pageSize: number;
   sortField?: string;
   sortDirection?: "asc" | "desc";
-  status?: PropertyStatus;
+  status?: ProjectStatus;
   propertyType?: PropertyType;
   countryCode?: string;
 }

@@ -1,39 +1,60 @@
 # portfolio-dashboard
 
 React 18 + TypeScript + Redux Toolkit (RTK Query) dashboard for the real estate
-portfolio held by `portfolio-service`. Vite-powered, MUI X DataGrid for the
-grid.
+portfolio held by `portfolio-service` (`backend-service` in this workspace).
+Vite-powered, MUI X DataGrid for the grid.
 
-## Assumed backend contract
+## Backend contract
 
-`backend-service` in this workspace is currently an empty Spring Boot module
-(only `.idea` metadata + a stub `README.md`, no source yet). Since there's no
-running `portfolio-service` to introspect, this UI was built against the
-contract implied by the prompt, kept consistent with the field names already
-used by the sibling `valuation-service` (`countryCode`, `sizeSqm`,
-`acquisitionCurrency`, `propertyType`, ...) so a `PropertyDto` can be forwarded
-to `valuation-service`'s `/valuations/estimate` without remapping fields.
-
-Base URL: `http://localhost:8080/api/v1`
+`backend-service`'s source (`com.example.portfolio`) was read directly to
+confirm this — it's not assumed. Base URL: `http://localhost:8080/api/v1`.
 
 | Method | Path                          | Purpose                                   |
 |--------|-------------------------------|--------------------------------------------|
-| GET    | `/properties/enriched`        | Paginated grid rows, enriched with valuation + AML fields. Query params: `page`, `size`, `sort=field,asc\|desc`, `status`, `propertyType`, `countryCode` |
+| GET    | `/properties`                 | Plain paginated list (not used by the grid, which needs the enriched fields) |
+| GET    | `/properties/enriched`        | Paginated grid rows, enriched with valuation/FX/AML fields. Query params: `page`, `size`, `sort=field,asc\|desc`, `status`, `propertyType`, `countryCode` |
 | GET    | `/properties/{id}/enriched`   | Single enriched property (detail drawer)   |
 | POST   | `/properties`                 | Create                                     |
 | PUT    | `/properties/{id}`            | Update                                     |
 | DELETE | `/properties/{id}`            | Delete                                     |
 
-Response shape for paginated endpoints is Spring's default `Page<T>` JSON
-(`content`, `totalElements`, `totalPages`, `number`, `size`) — see
-[src/features/properties/types.ts](src/features/properties/types.ts).
+`RealEstateProjectResponse` (`property` in the enriched shape):
+`id`, `projectName`, `countryCode`, `city`, `address`, `propertyType`
+(`OFFICE`/`RETAIL`/`RESIDENTIAL`/`INDUSTRIAL`/`LAND`), `sizeSqm`,
+`acquisitionDate`, `acquisitionCost`, `acquisitionCurrency`, `ownerEntity`,
+`status` (`ACTIVE`/`UNDER_CONSTRUCTION`/`HELD_FOR_SALE`/`DISPOSED`),
+`createdAt`, `updatedAt`.
 
-If `portfolio-service`'s actual field names or paging envelope differ once
-that service exists, the only files that need to change are
-[types.ts](src/features/properties/types.ts) (DTO shapes),
-[propertiesApi.ts](src/features/properties/propertiesApi.ts) (query strings),
-and [propertySchema.ts](src/features/properties/propertySchema.ts) (validation
-rules) — components never talk to the network directly.
+`EnrichedRealEstateProjectResponse` **wraps** the base response rather than
+flattening it — `{ property, estimatedMarketValue, marketTrend, valueUSD,
+amlRiskRating, valuationUnavailable, fxUnavailable, complianceUnavailable }`.
+It's composed from three parallel downstream calls
+(`RealEstateProjectService.enrich`, via `Mono.zip`):
+
+- `valuation-service` → `estimatedMarketValue` (in the property's own
+  `acquisitionCurrency`, not USD) + `marketTrend` (`RISING`/`STABLE`/`DECLINING`)
+- `fx-compliance-service` (the `risk-service` module) → `valueUSD`, which is
+  the **acquisition cost** FX-converted to USD — it is not a USD version of
+  `estimatedMarketValue`
+- `fx-compliance-service` → `amlRiskRating` (`LOW`/`MEDIUM`/`HIGH`), by country
+
+Each of the three calls degrades independently: if a downstream call fails,
+its field is set to a sentinel string (`"valuation unavailable"` /
+`"compliance unavailable"`) and the matching `*Unavailable` boolean is set
+`true`. The UI branches on those booleans, never on the sentinel text — see
+`RiskBadge.tsx` and `PropertyDetailDrawer.tsx`.
+
+**⚠️ Known backend issue** (not fixed here, since it's outside this UI
+module): `RealEstateProjectService.findAllEnriched` builds the returned
+`Page`'s `content` from the *entire* filtered list
+(`repository.findAll(spec)`, no `Pageable` passed) and only uses `Pageable`
+for the `PageImpl` metadata (`totalElements`). Practically, `GET
+/properties/enriched` currently returns every matching row regardless of
+`page`/`size`, and ignores the `sort` param entirely (the non-enriched `GET
+/properties` endpoint does not have this bug). The grid here still requests
+the correct `page`/`size`/`sort` args, so it will work correctly with no UI
+changes once that method is updated to slice/sort before enriching — until
+then, expect the grid to show more rows per page than requested.
 
 ## Folder structure
 
@@ -46,7 +67,7 @@ src/
     hooks.ts             # typed useAppDispatch / useAppSelector
   features/
     properties/
-      types.ts           # PropertyDto, EnrichedPropertyDto, PagedResponse<T>
+      types.ts           # RealEstateProjectResponse/Request, EnrichedRealEstateProjectResponse
       propertySchema.ts   # Zod schema mirroring backend bean validation
       propertiesApi.ts    # injectEndpoints: list/get/create/update/delete + tags
       PropertiesPage.tsx  # landing page composition
@@ -84,11 +105,15 @@ Went with **MUI X DataGrid (Community)**. Tradeoff considered:
   and has a broader plugin ecosystem — if this grid needed 100k+ rows
   rendered client-side, or Excel-style pivoting, that would tip the decision
   the other way.
+- One consequence of the response being nested (`{ property, ...enrichment
+  }`) rather than flat: DataGrid rows need `getRowId={(row) =>
+  row.property.id}` and each column needs a `valueGetter` reaching into
+  `row.property.*`, since DataGrid doesn't auto-resolve dotted `field` paths.
 
 ## Cache invalidation (why the grid stays in sync)
 
 `propertiesApi.ts` tags every row from `getEnrichedProperties` with
-`{ type: 'EnrichedProperty', id: <row id> }` plus one shared
+`{ type: 'EnrichedProperty', id: <row.property.id> }` plus one shared
 `{ type: 'EnrichedProperty', id: 'LIST' }` tag.
 
 - **Create / Delete** invalidate only the `'LIST'` tag, because the *set* of
@@ -104,12 +129,14 @@ Went with **MUI X DataGrid (Community)**. Tradeoff considered:
   **optimistic update** in `onQueryStarted`: they patch every currently
   cached `getEnrichedProperties` page (found via
   `propertiesApi.util.selectCachedArgsForQuery`) and the cached detail query
-  immediately, so the UI reflects the edit/delete before the network request
-  resolves. If the request fails, the patch is rolled back via the `undo()`
-  handle RTK Query returns. The tag invalidation still runs after success so
-  that server-computed fields the client can't predict (estimated market
-  value, AML risk rating, trend) get a real refetch rather than staying at
-  their optimistic (stale) values.
+  immediately (patching `row.property`, since that's the part of the
+  response the client actually knows the new value of), so the UI reflects
+  the edit/delete before the network request resolves. If the request fails,
+  the patch is rolled back via the `undo()` handle RTK Query returns. The tag
+  invalidation still runs after success so that server-computed fields the
+  client can't predict (`estimatedMarketValue`, `amlRiskRating`,
+  `marketTrend`) get a real refetch rather than staying at their optimistic
+  (stale) values.
 
 This is also why a plain Redux + `useEffect` + Axios approach needs
 noticeably more code for the same behavior: with thunks, each component (or a
@@ -123,28 +150,29 @@ mount, no manual deduping of identical in-flight requests, no cleanup logic
 for stale requests when `queryArgs` changes rapidly (e.g. fast pagination
 clicks).
 
-## Yup/Zod schema vs backend bean validation
+## Zod schema vs backend bean validation
 
 [propertySchema.ts](src/features/properties/propertySchema.ts) mirrors the
-bean validation annotations assumed on portfolio-service's
-`PropertyUpsertDto`:
+actual bean validation annotations on
+`RealEstateProjectRequest`/`RealEstateProject` in `backend-service`:
 
-| Zod rule | Assumed bean validation | Field |
+| Zod rule | Backend bean validation | Field |
 |---|---|---|
-| `.min(1)` | `@NotBlank` | name, city |
-| `.max(200)` / `.max(100)` | `@Size(max = ...)` | name, city |
+| `.min(1)` | `@NotBlank` | projectName, city, address, ownerEntity |
+| `.max(150)` / `.max(100)` / `.max(250)` / `.max(120)` | `@Size(max = ...)` | projectName, city, address, ownerEntity respectively |
 | `.length(2)` | `@Size(min = 2, max = 2)` | countryCode (ISO 3166-1 alpha-2) |
 | `.length(3)` | `@Size(min = 3, max = 3)` | acquisitionCurrency (ISO 4217) |
 | `z.enum([...])` | `@NotNull` on a Java enum field | propertyType, status |
-| `.positive()` | `@Positive` | sizeSqm |
-| `.nonnegative()` | `@PositiveOrZero` | acquisitionCost |
+| `.min(0.01)` | `@DecimalMin("0.01")` | sizeSqm, acquisitionCost |
 | `.refine(date <= now)` | `@PastOrPresent` | acquisitionDate |
 
-The point of keeping these in lockstep is that a `400` from the server should
-only happen when this file is missing a rule the backend enforces — not
-because the two layers disagree about what's valid. If/when the real
-`portfolio-service` DTO's annotations are confirmed, update this table and
-the schema together.
+Keeping these in lockstep means a `400` from the server should only happen
+when this file is missing a rule the backend enforces — not because the two
+layers disagree about what's valid. `GlobalExceptionHandler` returns
+`{ fieldErrors: { field: message } }` on a `MethodArgumentNotValidException`
+(400); the form currently surfaces the caught error's top-level `message`
+in a snackbar, not per-field server errors, since client-side validation
+already blocks every case the backend rejects.
 
 ## Environment
 
@@ -163,13 +191,23 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Start `portfolio-service` (from Prompt 3) first so it's listening on
-`http://localhost:8080` — e.g. `mvn spring-boot:run` from that module,
-mirroring how `valuation-service` runs on 8081 (see
-[../../valuation-service/valuation-service/README.md](../../valuation-service/valuation-service/README.md)).
-CORS: if the backend doesn't already allow `http://localhost:5173`, add a
-`@CrossOrigin` / global CORS config for that origin, since `fetchBaseQuery`
-calls it directly (no dev-server proxy is configured).
+Start all three backend services first (`backend-service` depends on the
+other two for the `/enriched` endpoints):
+
+```bash
+# from backend-service/       (portfolio-service, port 8080)
+mvn spring-boot:run
+
+# from valuation-service/valuation-service/   (port 8081)
+mvn spring-boot:run
+
+# from risk-service/risk-service/  (fx-compliance-service, port 8082)
+mvn spring-boot:run
+```
+
+CORS is already configured in `backend-service`'s `CorsConfig` for
+`http://localhost:3000` and `http://localhost:5173` — no changes needed there
+for the default Vite dev server port.
 
 ```bash
 npm run test        # vitest run, includes PropertyFormModal validation tests

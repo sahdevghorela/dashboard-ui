@@ -19,7 +19,7 @@ export function DeleteConfirmDialog() {
     if (!property) return;
     try {
       await deleteProperty(property.id).unwrap();
-      enqueueSnackbar(`"${property.name}" deleted`, { variant: "success" });
+      enqueueSnackbar(`"${property.projectName}" deleted`, { variant: "success" });
       dispatch(closeDeleteDialog());
     } catch (err) {
       const message =
@@ -35,7 +35,7 @@ export function DeleteConfirmDialog() {
       <DialogContent>
         <DialogContentText>
           Are you sure you want to delete{" "}
-          <strong>{property?.name}</strong>? This cannot be undone.
+          <strong>{property?.projectName}</strong>? This cannot be undone.
         </DialogContentText>
       </DialogContent>
       <DialogActions>

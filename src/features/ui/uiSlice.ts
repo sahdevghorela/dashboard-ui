@@ -1,12 +1,12 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import type {
-  PropertyDto,
-  PropertyStatus,
+  ProjectStatus,
   PropertyType,
+  RealEstateProjectResponse,
 } from "../properties/types";
 
 export interface PropertyFilters {
-  status: PropertyStatus | "ALL";
+  status: ProjectStatus | "ALL";
   propertyType: PropertyType | "ALL";
   countryCode: string; // "" means no filter
 }
@@ -15,11 +15,11 @@ export interface UiState {
   formModal: {
     open: boolean;
     mode: "create" | "edit";
-    property: PropertyDto | null;
+    property: RealEstateProjectResponse | null;
   };
   deleteDialog: {
     open: boolean;
-    property: PropertyDto | null;
+    property: RealEstateProjectResponse | null;
   };
   detailDrawer: {
     open: boolean;
@@ -42,13 +42,13 @@ const uiSlice = createSlice({
     openCreateModal(state) {
       state.formModal = { open: true, mode: "create", property: null };
     },
-    openEditModal(state, action: PayloadAction<PropertyDto>) {
+    openEditModal(state, action: PayloadAction<RealEstateProjectResponse>) {
       state.formModal = { open: true, mode: "edit", property: action.payload };
     },
     closeFormModal(state) {
       state.formModal.open = false;
     },
-    openDeleteDialog(state, action: PayloadAction<PropertyDto>) {
+    openDeleteDialog(state, action: PayloadAction<RealEstateProjectResponse>) {
       state.deleteDialog = { open: true, property: action.payload };
     },
     closeDeleteDialog(state) {

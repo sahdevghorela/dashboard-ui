@@ -28,11 +28,17 @@ describe("PropertyFormModal", () => {
 
     await user.click(screen.getByRole("button", { name: /create property/i }));
 
-    expect(await screen.findByText(/name is required/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/project name is required/i),
+    ).toBeInTheDocument();
     expect(
       await screen.findByText(/2-letter iso country code/i),
     ).toBeInTheDocument();
     expect(await screen.findByText(/city is required/i)).toBeInTheDocument();
+    expect(await screen.findByText(/address is required/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/owner entity is required/i),
+    ).toBeInTheDocument();
 
     // The dialog is still open (mode/title unchanged) because validation
     // blocked the mutation from ever firing.
@@ -48,11 +54,15 @@ describe("PropertyFormModal", () => {
     });
 
     await user.click(screen.getByRole("button", { name: /create property/i }));
-    expect(await screen.findByText(/name is required/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/project name is required/i),
+    ).toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/project name/i), "Riverside Tower");
     await user.click(screen.getByRole("button", { name: /create property/i }));
 
-    expect(screen.queryByText(/name is required/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/project name is required/i),
+    ).not.toBeInTheDocument();
   });
 });

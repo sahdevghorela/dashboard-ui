@@ -1,24 +1,36 @@
 import Chip from "@mui/material/Chip";
-import type { RiskRating } from "./types";
+import type { AmlRiskRating } from "./types";
 
-const RISK_COLOR: Record<RiskRating, "success" | "warning" | "error"> = {
-  GREEN: "success",
-  AMBER: "warning",
-  RED: "error",
+const RISK_COLOR: Record<AmlRiskRating, "success" | "warning" | "error"> = {
+  LOW: "success",
+  MEDIUM: "warning",
+  HIGH: "error",
 };
 
-const RISK_LABEL: Record<RiskRating, string> = {
-  GREEN: "Low",
-  AMBER: "Medium",
-  RED: "High",
-};
-
-export function RiskBadge({ rating }: { rating: RiskRating }) {
+/**
+ * `rating`/`unavailable` come straight from EnrichedRealEstateProjectResponse:
+ * amlRiskRating is only ever "LOW" | "MEDIUM" | "HIGH" when
+ * complianceUnavailable is false — when the downstream fx-compliance-service
+ * call fails, the backend fills it with the sentinel string
+ * "compliance unavailable" instead, so branch on the boolean flag rather than
+ * string-matching that text.
+ */
+export function RiskBadge({
+  rating,
+  unavailable,
+}: {
+  rating: string;
+  unavailable: boolean;
+}) {
+  if (unavailable || !(rating in RISK_COLOR)) {
+    return <Chip size="small" color="default" label="Unavailable" />;
+  }
+  const known = rating as AmlRiskRating;
   return (
     <Chip
       size="small"
-      color={RISK_COLOR[rating]}
-      label={`${RISK_LABEL[rating]} (${rating})`}
+      color={RISK_COLOR[known]}
+      label={`${known} risk`}
       sx={{ fontWeight: 600 }}
     />
   );

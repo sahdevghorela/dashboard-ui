@@ -11,7 +11,7 @@ import {
   setPropertyTypeFilter,
   setStatusFilter,
 } from "../ui/uiSlice";
-import { PROPERTY_STATUSES, PROPERTY_TYPES } from "./types";
+import { PROJECT_STATUSES, PROPERTY_TYPES } from "./types";
 
 export function PropertiesFilters() {
   const dispatch = useAppDispatch();
@@ -34,7 +34,7 @@ export function PropertiesFilters() {
         sx={{ minWidth: 160 }}
       >
         <MenuItem value="ALL">All statuses</MenuItem>
-        {PROPERTY_STATUSES.map((s) => (
+        {PROJECT_STATUSES.map((s) => (
           <MenuItem key={s} value={s}>
             {s.replace("_", " ")}
           </MenuItem>

@@ -13,22 +13,24 @@ import { useSnackbar } from "notistack";
 import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { closeFormModal } from "../ui/uiSlice";
 import { propertySchema, type PropertyFormValues } from "./propertySchema";
-import { PROPERTY_STATUSES, PROPERTY_TYPES } from "./types";
+import { PROJECT_STATUSES, PROPERTY_TYPES } from "./types";
 import {
   useCreatePropertyMutation,
   useUpdatePropertyMutation,
 } from "./propertiesApi";
 
 const EMPTY_VALUES: PropertyFormValues = {
-  name: "",
+  projectName: "",
   countryCode: "",
   city: "",
+  address: "",
   propertyType: "OFFICE",
   status: "ACTIVE",
   sizeSqm: 0,
+  acquisitionDate: new Date().toISOString().slice(0, 10),
   acquisitionCost: 0,
   acquisitionCurrency: "USD",
-  acquisitionDate: new Date().toISOString().slice(0, 10),
+  ownerEntity: "",
 };
 
 export function PropertyFormModal() {
@@ -56,15 +58,17 @@ export function PropertyFormModal() {
     if (!open) return;
     if (mode === "edit" && property) {
       reset({
-        name: property.name,
+        projectName: property.projectName,
         countryCode: property.countryCode,
         city: property.city,
+        address: property.address,
         propertyType: property.propertyType,
         status: property.status,
         sizeSqm: property.sizeSqm,
+        acquisitionDate: property.acquisitionDate.slice(0, 10),
         acquisitionCost: property.acquisitionCost,
         acquisitionCurrency: property.acquisitionCurrency,
-        acquisitionDate: property.acquisitionDate.slice(0, 10),
+        ownerEntity: property.ownerEntity,
       });
     } else {
       reset(EMPTY_VALUES);
@@ -104,15 +108,31 @@ export function PropertyFormModal() {
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12}>
               <Controller
-                name="name"
+                name="projectName"
                 control={control}
                 render={({ field }) => (
                   <TextField
                     {...field}
                     label="Project name"
                     fullWidth
-                    error={!!errors.name}
-                    helperText={errors.name?.message}
+                    error={!!errors.projectName}
+                    helperText={errors.projectName?.message}
+                  />
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Controller
+                name="address"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    label="Address"
+                    fullWidth
+                    error={!!errors.address}
+                    helperText={errors.address?.message}
                   />
                 )}
               />
@@ -187,9 +207,9 @@ export function PropertyFormModal() {
                     error={!!errors.status}
                     helperText={errors.status?.message}
                   >
-                    {PROPERTY_STATUSES.map((s) => (
+                    {PROJECT_STATUSES.map((s) => (
                       <MenuItem key={s} value={s}>
-                        {s.replace("_", " ")}
+                        {s.replace(/_/g, " ")}
                       </MenuItem>
                     ))}
                   </TextField>
@@ -209,6 +229,24 @@ export function PropertyFormModal() {
                     fullWidth
                     error={!!errors.sizeSqm}
                     helperText={errors.sizeSqm?.message}
+                  />
+                )}
+              />
+            </Grid>
+
+            <Grid item xs={6}>
+              <Controller
+                name="acquisitionDate"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    type="date"
+                    label="Acquisition date"
+                    fullWidth
+                    InputLabelProps={{ shrink: true }}
+                    error={!!errors.acquisitionDate}
+                    helperText={errors.acquisitionDate?.message}
                   />
                 )}
               />
@@ -248,19 +286,17 @@ export function PropertyFormModal() {
               />
             </Grid>
 
-            <Grid item xs={6}>
+            <Grid item xs={12}>
               <Controller
-                name="acquisitionDate"
+                name="ownerEntity"
                 control={control}
                 render={({ field }) => (
                   <TextField
                     {...field}
-                    type="date"
-                    label="Acquisition date"
+                    label="Owner entity"
                     fullWidth
-                    InputLabelProps={{ shrink: true }}
-                    error={!!errors.acquisitionDate}
-                    helperText={errors.acquisitionDate?.message}
+                    error={!!errors.ownerEntity}
+                    helperText={errors.ownerEntity?.message}
                   />
                 )}
               />

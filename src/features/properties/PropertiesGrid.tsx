@@ -10,12 +10,15 @@ import { useAppDispatch, useAppSelector } from "../../app/hooks";
 import { useGetEnrichedPropertiesQuery } from "./propertiesApi";
 import { openDeleteDialog, openDetailDrawer, openEditModal } from "../ui/uiSlice";
 import { RiskBadge } from "./RiskBadge";
-import type { EnrichedPropertyDto, PropertyQueryArgs } from "./types";
+import type { EnrichedRealEstateProjectResponse, PropertyQueryArgs } from "./types";
 
-const currency = (value: number, code: string) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: code }).format(
-    value,
-  );
+const currency = (value: number | null, code: string) =>
+  value === null
+    ? "Unavailable"
+    : new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: code,
+      }).format(value);
 
 export function PropertiesGrid() {
   const dispatch = useAppDispatch();
@@ -26,7 +29,7 @@ export function PropertiesGrid() {
     pageSize: 10,
   });
   const [sortModel, setSortModel] = useState<GridSortModel>([
-    { field: "name", sort: "asc" },
+    { field: "projectName", sort: "asc" },
   ]);
 
   const queryArgs: PropertyQueryArgs = useMemo(
@@ -46,36 +49,54 @@ export function PropertiesGrid() {
   const { data, isFetching, isError, error } =
     useGetEnrichedPropertiesQuery(queryArgs);
 
-  const columns: GridColDef<EnrichedPropertyDto>[] = [
-    { field: "name", headerName: "Project name", flex: 1.4, minWidth: 180 },
-    { field: "countryCode", headerName: "Country", width: 100 },
-    { field: "city", headerName: "City", width: 140 },
+  const columns: GridColDef<EnrichedRealEstateProjectResponse>[] = [
+    {
+      field: "projectName",
+      headerName: "Project name",
+      flex: 1.4,
+      minWidth: 180,
+      valueGetter: (_value, row) => row.property.projectName,
+    },
+    {
+      field: "countryCode",
+      headerName: "Country",
+      width: 100,
+      valueGetter: (_value, row) => row.property.countryCode,
+    },
+    {
+      field: "city",
+      headerName: "City",
+      width: 140,
+      valueGetter: (_value, row) => row.property.city,
+    },
     {
       field: "propertyType",
       headerName: "Property type",
       width: 140,
-      valueFormatter: (value: string) => value.replace("_", " "),
+      valueGetter: (_value, row) => row.property.propertyType,
     },
     {
       field: "status",
       headerName: "Status",
-      width: 140,
-      valueFormatter: (value: string) => value.replace("_", " "),
+      width: 160,
+      valueGetter: (_value, row) => row.property.status.replace(/_/g, " "),
     },
     {
       field: "sizeSqm",
       headerName: "Size (sqm)",
       width: 120,
       type: "number",
+      valueGetter: (_value, row) => row.property.sizeSqm,
       valueFormatter: (value: number) => value.toLocaleString(),
     },
     {
       field: "acquisitionCost",
       headerName: "Acquisition cost",
-      width: 160,
+      width: 170,
       type: "number",
-      valueFormatter: (value: number, row) =>
-        currency(value, row.acquisitionCurrency),
+      valueGetter: (_value, row) => row.property.acquisitionCost,
+      renderCell: (params) =>
+        currency(params.row.property.acquisitionCost, params.row.property.acquisitionCurrency),
     },
     {
       field: "estimatedMarketValue",
@@ -83,15 +104,23 @@ export function PropertiesGrid() {
       width: 170,
       type: "number",
       sortable: false,
-      valueFormatter: (value: number, row) =>
-        currency(value, row.marketValueCurrency),
+      valueGetter: (_value, row) => row.estimatedMarketValue,
+      renderCell: (params) =>
+        params.row.valuationUnavailable
+          ? "Unavailable"
+          : currency(params.row.estimatedMarketValue, params.row.property.acquisitionCurrency),
     },
     {
       field: "amlRiskRating",
       headerName: "AML risk",
-      width: 150,
+      width: 140,
       sortable: false,
-      renderCell: (params) => <RiskBadge rating={params.value} />,
+      renderCell: (params) => (
+        <RiskBadge
+          rating={params.row.amlRiskRating}
+          unavailable={params.row.complianceUnavailable}
+        />
+      ),
     },
     {
       field: "actions",
@@ -105,7 +134,7 @@ export function PropertiesGrid() {
           <Tooltip title="Edit">
             <IconButton
               size="small"
-              onClick={() => dispatch(openEditModal(params.row))}
+              onClick={() => dispatch(openEditModal(params.row.property))}
             >
               <EditIcon fontSize="small" />
             </IconButton>
@@ -113,7 +142,7 @@ export function PropertiesGrid() {
           <Tooltip title="Delete">
             <IconButton
               size="small"
-              onClick={() => dispatch(openDeleteDialog(params.row))}
+              onClick={() => dispatch(openDeleteDialog(params.row.property))}
             >
               <DeleteIcon fontSize="small" />
             </IconButton>
@@ -134,6 +163,7 @@ export function PropertiesGrid() {
     <DataGrid
       autoHeight
       rows={data?.content ?? []}
+      getRowId={(row) => row.property.id}
       rowCount={data?.totalElements ?? 0}
       columns={columns}
       loading={isFetching}
@@ -149,7 +179,7 @@ export function PropertiesGrid() {
       onSortModelChange={setSortModel}
       pageSizeOptions={[10, 25, 50]}
       disableRowSelectionOnClick
-      onRowClick={(params) => dispatch(openDetailDrawer(params.row.id))}
+      onRowClick={(params) => dispatch(openDetailDrawer(params.row.property.id))}
       // Column-level filter panels are disabled (see column defs) because
       // status/propertyType/country are already served by the dedicated
       // PropertiesFilters toolbar, which maps cleanly onto the backend's

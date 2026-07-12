@@ -1,10 +1,10 @@
 import { baseApi } from "../../api/baseApi";
 import type {
-  EnrichedPropertyDto,
+  EnrichedRealEstateProjectResponse,
   PagedResponse,
-  PropertyDto,
+  RealEstateProjectRequest,
+  RealEstateProjectResponse,
   PropertyQueryArgs,
-  PropertyUpsertDto,
 } from "./types";
 
 function toQueryString(args: PropertyQueryArgs): string {
@@ -28,15 +28,24 @@ function toQueryString(args: PropertyQueryArgs): string {
 export const propertiesApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     /**
-     * Grid data source. `providesTags` lists every row's id plus a catch-all
-     * 'LIST' tag. A mutation only needs to invalidate 'LIST' (create/delete,
-     * where the page's row count/order can shift) or a specific id
-     * (update, where only that row's cached data is stale) — RTK Query
-     * then refetches exactly the active queries that were tagged, with no
-     * manual dispatch(refetch()) or useEffect from the component.
+     * Grid data source (GET /properties/enriched). `providesTags` lists
+     * every row's id plus a catch-all 'LIST' tag. A mutation only needs to
+     * invalidate 'LIST' (create/delete, where the page's row count/order
+     * can shift) or a specific id (update, where only that row's cached
+     * data is stale) — RTK Query then refetches exactly the active queries
+     * that were tagged, with no manual dispatch(refetch()) or useEffect
+     * from the component.
+     *
+     * NOTE: as currently implemented, RealEstateProjectService.findAllEnriched
+     * builds the Page's metadata (totalElements) from Pageable but slices
+     * `content` from the *unpaged* full filtered list — so today this
+     * endpoint returns every matching row on every page request rather than
+     * one page's worth. The UI here still asks for the correct page/size
+     * (matching the intended contract), so it will "just work" once that
+     * backend method actually paginates content before enriching it.
      */
     getEnrichedProperties: builder.query<
-      PagedResponse<EnrichedPropertyDto>,
+      PagedResponse<EnrichedRealEstateProjectResponse>,
       PropertyQueryArgs
     >({
       query: (args) => `/properties/enriched?${toQueryString(args)}`,
@@ -45,21 +54,24 @@ export const propertiesApi = baseApi.injectEndpoints({
           ? [
               ...result.content.map((p) => ({
                 type: "EnrichedProperty" as const,
-                id: p.id,
+                id: p.property.id,
               })),
               { type: "EnrichedProperty" as const, id: "LIST" },
             ]
           : [{ type: "EnrichedProperty" as const, id: "LIST" }],
     }),
 
-    getPropertyEnriched: builder.query<EnrichedPropertyDto, number>({
+    getPropertyEnriched: builder.query<EnrichedRealEstateProjectResponse, number>({
       query: (id) => `/properties/${id}/enriched`,
       providesTags: (_result, _error, id) => [
         { type: "EnrichedProperty", id },
       ],
     }),
 
-    createProperty: builder.mutation<PropertyDto, PropertyUpsertDto>({
+    createProperty: builder.mutation<
+      RealEstateProjectResponse,
+      RealEstateProjectRequest
+    >({
       query: (body) => ({
         url: "/properties",
         method: "POST",
@@ -71,8 +83,8 @@ export const propertiesApi = baseApi.injectEndpoints({
     }),
 
     updateProperty: builder.mutation<
-      PropertyDto,
-      { id: number; body: PropertyUpsertDto }
+      RealEstateProjectResponse,
+      { id: number; body: RealEstateProjectRequest }
     >({
       query: ({ id, body }) => ({
         url: `/properties/${id}`,
@@ -98,8 +110,8 @@ export const propertiesApi = baseApi.injectEndpoints({
               "getEnrichedProperties",
               args,
               (draft) => {
-                const row = draft.content.find((p) => p.id === id);
-                if (row) Object.assign(row, body);
+                const row = draft.content.find((p) => p.property.id === id);
+                if (row) Object.assign(row.property, body);
               },
             ),
           );
@@ -111,7 +123,7 @@ export const propertiesApi = baseApi.injectEndpoints({
             "getPropertyEnriched",
             id,
             (draft) => {
-              Object.assign(draft, body);
+              Object.assign(draft.property, body);
             },
           ),
         );
@@ -124,8 +136,9 @@ export const propertiesApi = baseApi.injectEndpoints({
         }
       },
       // Still invalidate on settle: the server-computed fields this DTO
-      // can't predict (estimatedMarketValue, amlRiskRating, trend) need a
-      // real refetch once the optimistic patch above has been superseded.
+      // can't predict (estimatedMarketValue, amlRiskRating, marketTrend)
+      // need a real refetch once the optimistic patch above has been
+      // superseded.
       invalidatesTags: (_result, _error, { id }) => [
         { type: "EnrichedProperty", id },
       ],
@@ -147,7 +160,9 @@ export const propertiesApi = baseApi.injectEndpoints({
               "getEnrichedProperties",
               args,
               (draft) => {
-                draft.content = draft.content.filter((p) => p.id !== id);
+                draft.content = draft.content.filter(
+                  (p) => p.property.id !== id,
+                );
                 draft.totalElements = Math.max(0, draft.totalElements - 1);
               },
             ),
